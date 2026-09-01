@@ -1,0 +1,28 @@
+{
+    "business_name": "Smile Dental Clinic",
+    "business_type": "Dental Clinic",
+    "address": "123 Main Street",
+    "phone": "+91-9876543210",
+    "email": "contact@smiledental.example",
+    "timezone": "Asia/Kolkata",
+
+    "business_hours": {
+        "Monday": "10:00-18:00",
+        "Tuesday": "10:00-18:00",
+        "Wednesday": "10:00-18:00",
+        "Thursday": "10:00-18:00",
+        "Friday": "10:00-18:00",
+        "Saturday": "10:00-14:00",
+        "Sunday": "Closed"
+    },
+
+    "services": [
+        "Dental checkup",
+        "Teeth cleaning",
+        "Root canal consultation",
+        "Dental filling",
+        "Tooth extraction"
+    ],
+
+    "appointment_duration_minutes": 30
+}
