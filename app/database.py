@@ -1,63 +1,109 @@
 import json
+import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+import psycopg
+
 
 DATABASE_PATH = Path("reception.db")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 def get_connection():
+    """
+    Use PostgreSQL in production and SQLite locally.
+    """
+
+    if DATABASE_URL:
+        return psycopg.connect(DATABASE_URL)
+
     return sqlite3.connect(DATABASE_PATH)
+
+
+def is_postgres():
+    return bool(DATABASE_URL)
 
 
 def initialize_database():
     connection = get_connection()
     cursor = connection.cursor()
 
-    # -----------------------------------------
-    # Appointments
-    # -----------------------------------------
+    if is_postgres():
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS appointments (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                date TEXT NOT NULL,
+                time TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'booked'
+            )
+        """)
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS appointments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            date TEXT NOT NULL,
-            time TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'booked'
-        )
-    """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conversations (
+                conversation_id TEXT PRIMARY KEY,
+                state_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
 
-    # -----------------------------------------
-    # Conversations
-    # -----------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conversation_messages (
+                id SERIAL PRIMARY KEY,
+                conversation_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS conversations (
-            conversation_id TEXT PRIMARY KEY,
-            state_json TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        )
-    """)
+    else:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS appointments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                date TEXT NOT NULL,
+                time TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'booked'
+            )
+        """)
 
-    # -----------------------------------------
-    # Conversation messages
-    # -----------------------------------------
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conversations (
+                conversation_id TEXT PRIMARY KEY,
+                state_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS conversation_messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            conversation_id TEXT NOT NULL,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )
-    """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS conversation_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
 
     connection.commit()
     connection.close()
+
+
+def execute_query(cursor, query, params=()):
+    """
+    Execute SQL using the correct placeholder style.
+    SQLite uses '?', PostgreSQL uses '%s'.
+    """
+
+    if is_postgres():
+        query = query.replace("?", "%s")
+
+    cursor.execute(query, params)
 
 
 def create_conversation(conversation_id: str, initial_state: dict):
@@ -66,24 +112,38 @@ def create_conversation(conversation_id: str, initial_state: dict):
 
     now = datetime.utcnow().isoformat()
 
-    cursor.execute(
-        """
-        INSERT OR IGNORE INTO conversations
-        (
-            conversation_id,
-            state_json,
-            created_at,
-            updated_at
+    if is_postgres():
+        execute_query(
+            cursor,
+            """
+            INSERT INTO conversations
+            (conversation_id, state_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT (conversation_id) DO NOTHING
+            """,
+            (
+                conversation_id,
+                json.dumps(initial_state),
+                now,
+                now,
+            ),
         )
-        VALUES (?, ?, ?, ?)
-        """,
-        (
-            conversation_id,
-            json.dumps(initial_state),
-            now,
-            now,
-        ),
-    )
+
+    else:
+        execute_query(
+            cursor,
+            """
+            INSERT OR IGNORE INTO conversations
+            (conversation_id, state_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                conversation_id,
+                json.dumps(initial_state),
+                now,
+                now,
+            ),
+        )
 
     connection.commit()
     connection.close()
@@ -93,7 +153,8 @@ def get_conversation_state(conversation_id: str) -> dict | None:
     connection = get_connection()
     cursor = connection.cursor()
 
-    cursor.execute(
+    execute_query(
+        cursor,
         """
         SELECT state_json
         FROM conversations
@@ -103,7 +164,6 @@ def get_conversation_state(conversation_id: str) -> dict | None:
     )
 
     row = cursor.fetchone()
-
     connection.close()
 
     if not row:
@@ -112,18 +172,15 @@ def get_conversation_state(conversation_id: str) -> dict | None:
     return json.loads(row[0])
 
 
-def save_conversation_state(
-    conversation_id: str,
-    state: dict,
-):
+def save_conversation_state(conversation_id: str, state: dict):
     connection = get_connection()
     cursor = connection.cursor()
 
-    cursor.execute(
+    execute_query(
+        cursor,
         """
         UPDATE conversations
-        SET state_json = ?,
-            updated_at = ?
+        SET state_json = ?, updated_at = ?
         WHERE conversation_id = ?
         """,
         (
@@ -137,23 +194,15 @@ def save_conversation_state(
     connection.close()
 
 
-def add_message(
-    conversation_id: str,
-    role: str,
-    content: str,
-):
+def add_message(conversation_id: str, role: str, content: str):
     connection = get_connection()
     cursor = connection.cursor()
 
-    cursor.execute(
+    execute_query(
+        cursor,
         """
         INSERT INTO conversation_messages
-        (
-            conversation_id,
-            role,
-            content,
-            created_at
-        )
+        (conversation_id, role, content, created_at)
         VALUES (?, ?, ?, ?)
         """,
         (
@@ -172,7 +221,8 @@ def get_messages(conversation_id: str) -> list[dict]:
     connection = get_connection()
     cursor = connection.cursor()
 
-    cursor.execute(
+    execute_query(
+        cursor,
         """
         SELECT role, content
         FROM conversation_messages
@@ -183,7 +233,6 @@ def get_messages(conversation_id: str) -> list[dict]:
     )
 
     rows = cursor.fetchall()
-
     connection.close()
 
     return [
