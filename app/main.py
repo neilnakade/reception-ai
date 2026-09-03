@@ -30,9 +30,9 @@ app = FastAPI(
 )
 
 
-# ---------------------------------------------------------
-# DATABASE + BUSINESS CONFIGURATION
-# ---------------------------------------------------------
+# =========================================================
+# INITIALIZATION
+# =========================================================
 
 initialize_database()
 
@@ -40,9 +40,9 @@ BUSINESS_CONFIG = load_business_config()
 SYSTEM_PROMPT = build_system_prompt(BUSINESS_CONFIG)
 
 
-# ---------------------------------------------------------
+# =========================================================
 # DEFAULT CONVERSATION STATE
-# ---------------------------------------------------------
+# =========================================================
 
 def default_state() -> dict:
     return {
@@ -60,23 +60,24 @@ def default_state() -> dict:
         "new_date": None,
         "new_time": None,
 
+        # Current action
         "action": None,
 
-        # Used to give a proper message when
-        # a customer provides an invalid date.
+        # Tracks whether we already asked the
+        # customer for a date.
         "asked_for_date": False,
     }
 
 
-# ---------------------------------------------------------
+# =========================================================
 # DATE EXTRACTION
-# ---------------------------------------------------------
+# =========================================================
 
 def extract_date(message: str):
     """
-    Extract a date from common Indian and natural-language formats.
+    Extract dates from common Indian and natural-language formats.
 
-    Supported examples:
+    Examples supported:
 
     today
     tomorrow
@@ -119,9 +120,6 @@ def extract_date(message: str):
 
     # -----------------------------------------------------
     # YYYY-MM-DD
-    #
-    # Example:
-    # 2026-09-05
     # -----------------------------------------------------
 
     iso_match = re.search(
@@ -130,7 +128,10 @@ def extract_date(message: str):
     )
 
     if iso_match:
-        year, month, day = map(int, iso_match.groups())
+        year, month, day = map(
+            int,
+            iso_match.groups(),
+        )
 
         try:
             return date(
@@ -143,15 +144,8 @@ def extract_date(message: str):
             return None
 
     # -----------------------------------------------------
-    # DD/MM/YYYY
-    # DD-MM-YYYY
-    #
-    # India-friendly format.
-    #
-    # Examples:
-    # 05/09/2026
-    # 5/9/2026
-    # 05-09-2026
+    # DD/MM/YYYY OR DD-MM-YYYY
+    # India-friendly format
     # -----------------------------------------------------
 
     indian_match = re.search(
@@ -214,14 +208,11 @@ def extract_date(message: str):
         **short_months,
     }
 
-    month_pattern = "|".join(
-        all_months.keys()
-    )
+    month_pattern = "|".join(all_months.keys())
 
     # -----------------------------------------------------
     # DAY + MONTH
     #
-    # Examples:
     # 5 September
     # 5th September
     # 05 September
@@ -235,12 +226,8 @@ def extract_date(message: str):
 
     if reverse_match:
 
-        day = int(
-            reverse_match.group(1)
-        )
-
+        day = int(reverse_match.group(1))
         month_name = reverse_match.group(2)
-
         month = all_months[month_name]
 
     else:
@@ -248,7 +235,6 @@ def extract_date(message: str):
         # -------------------------------------------------
         # MONTH + DAY
         #
-        # Examples:
         # September 5
         # September 5th
         # Sep 5
@@ -263,27 +249,16 @@ def extract_date(message: str):
             return None
 
         month_name = normal_match.group(1)
-
-        day = int(
-            normal_match.group(2)
-        )
-
+        day = int(normal_match.group(2))
         month = all_months[month_name]
 
     # -----------------------------------------------------
     # YEAR HANDLING
-    #
-    # If customer doesn't specify the year:
-    # use current year.
-    #
-    # If that date has already passed:
-    # use next year.
     # -----------------------------------------------------
 
     year = today.year
 
     try:
-
         candidate = date(
             year,
             month,
@@ -303,37 +278,36 @@ def extract_date(message: str):
         return None
 
 
-# ---------------------------------------------------------
+# =========================================================
 # CUSTOMER-FACING DATE FORMAT
-# ---------------------------------------------------------
+# =========================================================
 
 def format_date_for_customer(date_string: str) -> str:
     """
-    Convert internal YYYY-MM-DD format
-    into Indian DD/MM/YYYY format.
+    Internal:
+        2026-09-05
+
+    Customer:
+        05/09/2026
     """
 
     try:
-
         return datetime.strptime(
             date_string,
             "%Y-%m-%d",
         ).strftime("%d/%m/%Y")
 
     except (ValueError, TypeError):
-
         return date_string
 
 
-# ---------------------------------------------------------
+# =========================================================
 # TIME EXTRACTION
-# ---------------------------------------------------------
+# =========================================================
 
 def extract_time(message: str):
     """
-    Extract appointment time.
-
-    Supports examples:
+    Supports:
 
     4 PM
     4:00 PM
@@ -347,11 +321,6 @@ def extract_time(message: str):
 
     # -----------------------------------------------------
     # 12-HOUR FORMAT
-    #
-    # Examples:
-    # 4 PM
-    # 4:00 PM
-    # 04 PM
     # -----------------------------------------------------
 
     match_12 = re.search(
@@ -364,14 +333,10 @@ def extract_time(message: str):
 
     if match_12:
 
-        hour = int(
-            match_12.group(1)
-        )
-
+        hour = int(match_12.group(1))
         minute = int(
             match_12.group(2) or "00"
         )
-
         period = match_12.group(3)
 
         if period == "pm" and hour != 12:
@@ -384,10 +349,6 @@ def extract_time(message: str):
 
     # -----------------------------------------------------
     # 24-HOUR FORMAT
-    #
-    # Examples:
-    # 16:00
-    # 09:30
     # -----------------------------------------------------
 
     match_24 = re.search(
@@ -397,28 +358,22 @@ def extract_time(message: str):
 
     if match_24:
 
-        hour = int(
-            match_24.group(1)
-        )
-
-        minute = int(
-            match_24.group(2)
-        )
+        hour = int(match_24.group(1))
+        minute = int(match_24.group(2))
 
         return f"{hour:02d}:{minute:02d}"
 
     return None
 
 
-# ---------------------------------------------------------
+# =========================================================
 # INTENT DETECTION
-# ---------------------------------------------------------
+# =========================================================
 
 def detect_action(message: str):
-
     message_lower = message.lower()
 
-    # Cancellation has priority.
+    # Cancellation priority
     if any(
         keyword in message_lower
         for keyword in [
@@ -430,7 +385,7 @@ def detect_action(message: str):
     ):
         return "cancel"
 
-    # Rescheduling has priority over normal booking.
+    # Rescheduling priority
     if any(
         keyword in message_lower
         for keyword in [
@@ -443,7 +398,7 @@ def detect_action(message: str):
     ):
         return "reschedule"
 
-    # Booking keywords.
+    # Booking
     if any(
         keyword in message_lower
         for keyword in [
@@ -459,18 +414,58 @@ def detect_action(message: str):
     return None
 
 
-# ---------------------------------------------------------
+# =========================================================
+# EXPLICIT NEW BOOKING REQUEST
+# =========================================================
+
+def is_new_booking_request(message: str) -> bool:
+    """
+    Detects messages such as:
+
+    I want to book an appointment
+    I would like to book
+    I need an appointment
+    Can I schedule an appointment?
+    """
+
+    message_lower = message.lower().strip()
+
+    booking_words = [
+        "book",
+        "booking",
+        "schedule",
+        "reserve",
+        "appointment",
+    ]
+
+    date_value = extract_date(message)
+    time_value = extract_time(message)
+
+    contains_booking_word = any(
+        word in message_lower
+        for word in booking_words
+    )
+
+    # Booking request without actual date/time.
+    return (
+        contains_booking_word
+        and date_value is None
+        and time_value is None
+    )
+
+
+# =========================================================
 # BOOKING HANDLER
-# ---------------------------------------------------------
+# =========================================================
 
 def handle_booking(
     message: str,
     state: dict,
 ):
 
-    # -----------------------------------------------------
+    # =====================================================
     # DATE
-    # -----------------------------------------------------
+    # =====================================================
 
     if not state.get("date"):
 
@@ -482,6 +477,30 @@ def handle_booking(
             state["asked_for_date"] = False
 
         else:
+
+            # -------------------------------------------------
+            # IMPORTANT FIX
+            #
+            # A fresh booking request should NOT be treated
+            # as an invalid date.
+            #
+            # Example:
+            # "I would like to book an appointment"
+            # -------------------------------------------------
+
+            if is_new_booking_request(message):
+
+                state["asked_for_date"] = True
+
+                return (
+                    "Sure. What date would you like "
+                    "the appointment?"
+                )
+
+            # -------------------------------------------------
+            # Customer was already asked for a date and gave
+            # something that we couldn't understand.
+            # -------------------------------------------------
 
             if state.get("asked_for_date"):
 
@@ -498,9 +517,9 @@ def handle_booking(
                 "the appointment?"
             )
 
-    # -----------------------------------------------------
+    # =====================================================
     # TIME
-    # -----------------------------------------------------
+    # =====================================================
 
     if not state.get("time"):
 
@@ -517,9 +536,9 @@ def handle_booking(
                 "the appointment?"
             )
 
-    # -----------------------------------------------------
+    # =====================================================
     # NAME
-    # -----------------------------------------------------
+    # =====================================================
 
     if not state.get("name"):
 
@@ -533,12 +552,14 @@ def handle_booking(
             cleaned_message
         )
 
-        # Don't accidentally save a date/time
-        # as the person's name.
+        # Don't accidentally save date/time as name.
         if (
             cleaned_message
             and not extracted_time
             and not extracted_date
+            and not is_new_booking_request(
+                cleaned_message
+            )
         ):
 
             state["name"] = cleaned_message
@@ -547,9 +568,9 @@ def handle_booking(
 
             return "May I have your name?"
 
-    # -----------------------------------------------------
-    # FINAL BOOKING
-    # -----------------------------------------------------
+    # =====================================================
+    # COMPLETE BOOKING
+    # =====================================================
 
     if (
         state.get("date")
@@ -566,6 +587,10 @@ def handle_booking(
             state["date"]
         )
 
+        # -------------------------------------------------
+        # SLOT ALREADY BOOKED
+        # -------------------------------------------------
+
         if availability == "BOOKED":
 
             return (
@@ -573,6 +598,10 @@ def handle_booking(
                 f"{customer_date} is already booked. "
                 "Please choose another time."
             )
+
+        # -------------------------------------------------
+        # BOOK
+        # -------------------------------------------------
 
         result = book_appointment(
             date=state["date"],
@@ -589,11 +618,14 @@ def handle_booking(
                 f"Name: {state['name']}."
             )
 
-            # Reset booking state after success.
             state.clear()
             state.update(default_state())
 
             return response
+
+        # Race condition:
+        # someone booked the slot between the check
+        # and the insert.
 
         if result == "BOOKED":
 
@@ -606,52 +638,56 @@ def handle_booking(
     return "Please provide the appointment details."
 
 
-# ---------------------------------------------------------
+# =========================================================
 # CANCELLATION HANDLER
-# ---------------------------------------------------------
+# =========================================================
 
 def handle_cancellation(
     message: str,
     state: dict,
 ):
 
-    # -----------------------------------------------------
+    # =====================================================
     # DATE
-    # -----------------------------------------------------
+    # =====================================================
 
     if not state.get("date"):
 
         extracted_date = extract_date(message)
 
         if extracted_date:
+
             state["date"] = extracted_date
 
         else:
+
             return (
                 "What date is the appointment "
                 "you would like to cancel?"
             )
 
-    # -----------------------------------------------------
+    # =====================================================
     # TIME
-    # -----------------------------------------------------
+    # =====================================================
 
     if not state.get("time"):
 
         extracted_time = extract_time(message)
 
         if extracted_time:
+
             state["time"] = extracted_time
 
         else:
+
             return (
                 "What time is the appointment "
                 "you would like to cancel?"
             )
 
-    # -----------------------------------------------------
+    # =====================================================
     # NAME
-    # -----------------------------------------------------
+    # =====================================================
 
     if not state.get("name"):
 
@@ -680,9 +716,9 @@ def handle_cancellation(
                 "on the appointment?"
             )
 
-    # -----------------------------------------------------
+    # =====================================================
     # CANCEL
-    # -----------------------------------------------------
+    # =====================================================
 
     if (
         state.get("date")
@@ -723,18 +759,18 @@ def handle_cancellation(
     return "Please provide the appointment details."
 
 
-# ---------------------------------------------------------
+# =========================================================
 # RESCHEDULE HANDLER
-# ---------------------------------------------------------
+# =========================================================
 
 def handle_rescheduling(
     message: str,
     state: dict,
 ):
 
-    # -----------------------------------------------------
-    # CUSTOMER NAME
-    # -----------------------------------------------------
+    # =====================================================
+    # NAME
+    # =====================================================
 
     if not state.get("name"):
 
@@ -753,69 +789,80 @@ def handle_rescheduling(
             and not extracted_time
             and not extracted_date
         ):
+
             state["name"] = cleaned_message
 
         else:
-            return "May I have the name on the appointment?"
 
-    # -----------------------------------------------------
+            return (
+                "May I have the name "
+                "on the appointment?"
+            )
+
+    # =====================================================
     # OLD DATE
-    # -----------------------------------------------------
+    # =====================================================
 
     if not state.get("old_date"):
 
         extracted_date = extract_date(message)
 
         if extracted_date:
+
             state["old_date"] = extracted_date
 
         else:
+
             return (
                 "What is the current date of "
                 "your appointment?"
             )
 
-    # -----------------------------------------------------
+    # =====================================================
     # OLD TIME
-    # -----------------------------------------------------
+    # =====================================================
 
     if not state.get("old_time"):
 
         extracted_time = extract_time(message)
 
         if extracted_time:
+
             state["old_time"] = extracted_time
 
         else:
+
             return (
                 "What is the current time of "
                 "your appointment?"
             )
 
-    # -----------------------------------------------------
+    # =====================================================
     # NEW DATE
-    # -----------------------------------------------------
+    # =====================================================
 
     if not state.get("new_date"):
 
         extracted_date = extract_date(message)
 
-        # Don't accidentally use the old date again.
         if (
             extracted_date
-            and extracted_date != state.get("old_date")
+            and extracted_date
+            != state.get("old_date")
         ):
+
             state["new_date"] = extracted_date
 
         else:
+
             return (
                 "What new date would you like "
                 "for the appointment?"
             )
 
-    # -----------------------------------------------------
+    # =====================================================
     # NEW TIME
-    # -----------------------------------------------------
+    # =====================================================
 
     if not state.get("new_time"):
 
@@ -823,7 +870,8 @@ def handle_rescheduling(
 
         if (
             extracted_time
-            and extracted_time != state.get("old_time")
+            and extracted_time
+            != state.get("old_time")
         ):
 
             state["new_time"] = extracted_time
@@ -835,9 +883,9 @@ def handle_rescheduling(
                 "for the appointment?"
             )
 
-    # -----------------------------------------------------
-    # FINAL RESCHEDULE
-    # -----------------------------------------------------
+    # =====================================================
+    # RESCHEDULE
+    # =====================================================
 
     if (
         state.get("name")
@@ -862,8 +910,9 @@ def handle_rescheduling(
         if result == "RESCHEDULED":
 
             response = (
-                f"Your appointment has been rescheduled "
-                f"to {new_customer_date} at "
+                f"Your appointment has been "
+                f"rescheduled to "
+                f"{new_customer_date} at "
                 f"{state['new_time']}."
             )
 
@@ -875,8 +924,8 @@ def handle_rescheduling(
         if result == "OLD_APPOINTMENT_NOT_FOUND":
 
             return (
-                "I couldn't find your existing appointment "
-                "with those details."
+                "I couldn't find your existing "
+                "appointment with those details."
             )
 
         if result == "NEW_SLOT_BOOKED":
@@ -890,9 +939,9 @@ def handle_rescheduling(
     return "Please provide the appointment details."
 
 
-# ---------------------------------------------------------
+# =========================================================
 # ROOT ENDPOINT
-# ---------------------------------------------------------
+# =========================================================
 
 @app.get("/")
 def root():
@@ -902,9 +951,9 @@ def root():
     }
 
 
-# ---------------------------------------------------------
+# =========================================================
 # CHAT ENDPOINT
-# ---------------------------------------------------------
+# =========================================================
 
 @app.post(
     "/chat",
@@ -914,9 +963,9 @@ def chat(request: ChatRequest):
 
     conversation_id = request.conversation_id
 
-    # -----------------------------------------------------
+    # =====================================================
     # LOAD OR CREATE CONVERSATION
-    # -----------------------------------------------------
+    # =====================================================
 
     state = get_conversation_state(
         conversation_id
@@ -931,40 +980,68 @@ def chat(request: ChatRequest):
             state,
         )
 
-    # -----------------------------------------------------
-    # LOAD PREVIOUS MESSAGES
-    # -----------------------------------------------------
+    # =====================================================
+    # LOAD HISTORY
+    # =====================================================
 
     history = get_messages(
         conversation_id
     )
 
-    # Add current user message.
+    # Save user message.
     add_message(
         conversation_id,
         "user",
         request.message,
     )
 
-    # -----------------------------------------------------
-    # DETECT ACTION
-    # -----------------------------------------------------
+    # =====================================================
+    # DETECT INTENT
+    # =====================================================
 
     detected_action = detect_action(
         request.message
     )
 
-    # Only update action if a new actionable
-    # intent was detected.
     if detected_action:
+
+        # -------------------------------------------------
+        # If the customer explicitly starts another
+        # booking request after a previous incomplete
+        # booking state, clean the old booking fields.
+        #
+        # This prevents:
+        #
+        # "I want to book an appointment"
+        #
+        # from being treated as an invalid date.
+        # -------------------------------------------------
+
+        if (
+            detected_action == "book"
+            and is_new_booking_request(
+                request.message
+            )
+            and not state.get("date")
+            and not state.get("time")
+        ):
+
+            state["name"] = None
+            state["date"] = None
+            state["time"] = None
+            state["old_date"] = None
+            state["old_time"] = None
+            state["new_date"] = None
+            state["new_time"] = None
+            state["asked_for_date"] = False
 
         state["action"] = detected_action
 
     action = state.get("action")
 
-    # -----------------------------------------------------
-    # HANDLE BOOKING
-    # -----------------------------------------------------
+    # =====================================================
+    # BOOKING
+    # =====================================================
 
     if action == "book":
 
@@ -973,9 +1050,9 @@ def chat(request: ChatRequest):
             state,
         )
 
-    # -----------------------------------------------------
-    # HANDLE CANCELLATION
-    # -----------------------------------------------------
+    # =====================================================
+    # CANCELLATION
+    # =====================================================
 
     elif action == "cancel":
 
@@ -984,9 +1061,9 @@ def chat(request: ChatRequest):
             state,
         )
 
-    # -----------------------------------------------------
-    # HANDLE RESCHEDULING
-    # -----------------------------------------------------
+    # =====================================================
+    # RESCHEDULING
+    # =====================================================
 
     elif action == "reschedule":
 
@@ -995,9 +1072,9 @@ def chat(request: ChatRequest):
             state,
         )
 
-    # -----------------------------------------------------
-    # NORMAL AI RESPONSE
-    # -----------------------------------------------------
+    # =====================================================
+    # NORMAL LLM RESPONSE
+    # =====================================================
 
     else:
 
@@ -1008,8 +1085,8 @@ def chat(request: ChatRequest):
             }
         ]
 
-        # Include previous conversation history.
         for message in history:
+
             llm_messages.append(message)
 
         llm_messages.append(
@@ -1024,9 +1101,9 @@ def chat(request: ChatRequest):
             state,
         )
 
-    # -----------------------------------------------------
+    # =====================================================
     # SAVE STATE + RESPONSE
-    # -----------------------------------------------------
+    # =====================================================
 
     save_conversation_state(
         conversation_id,
