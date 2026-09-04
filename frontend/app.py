@@ -1,14 +1,23 @@
-import streamlit as st
-import requests
-
-
 import os
+import uuid
+
+import requests
+import streamlit as st
+
+
+# ---------------------------------------------------------
+# CONFIGURATION
+# ---------------------------------------------------------
 
 API_URL = os.getenv(
     "API_URL",
-    "http://127.0.0.1:8000/chat"
+    "http://127.0.0.1:8000/chat",
 )
 
+
+# ---------------------------------------------------------
+# PAGE CONFIG
+# ---------------------------------------------------------
 
 st.set_page_config(
     page_title="ReceptionAI",
@@ -17,24 +26,46 @@ st.set_page_config(
 )
 
 
-st.title("🦷 ReceptionAI")
-st.caption("AI receptionist for Smile Dental Clinic")
-
-
-# --------------------------------------------------
-# Session state
-# --------------------------------------------------
+# ---------------------------------------------------------
+# SESSION STATE
+# ---------------------------------------------------------
 
 if "conversation_id" not in st.session_state:
-    st.session_state.conversation_id = "web-user-001"
+    st.session_state.conversation_id = str(uuid.uuid4())
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 
-# --------------------------------------------------
-# Display previous messages
-# --------------------------------------------------
+# ---------------------------------------------------------
+# HEADER
+# ---------------------------------------------------------
+
+st.title("🦷 ReceptionAI")
+st.caption("AI receptionist for Smile Dental Clinic")
+
+
+# ---------------------------------------------------------
+# NEW CONVERSATION
+# ---------------------------------------------------------
+
+if st.button(
+    "🆕 New Conversation",
+    use_container_width=True,
+):
+
+    st.session_state.conversation_id = str(
+        uuid.uuid4()
+    )
+
+    st.session_state.messages = []
+
+    st.rerun()
+
+
+# ---------------------------------------------------------
+# CHAT HISTORY
+# ---------------------------------------------------------
 
 for message in st.session_state.messages:
 
@@ -42,16 +73,21 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 
-# --------------------------------------------------
-# Chat input
-# --------------------------------------------------
+# ---------------------------------------------------------
+# CHAT INPUT
+# ---------------------------------------------------------
 
-user_message = st.chat_input("How can I help you?")
+user_message = st.chat_input(
+    "How can I help you?"
+)
 
 
 if user_message:
 
-    # Show user message
+    # -----------------------------------------------------
+    # SHOW USER MESSAGE
+    # -----------------------------------------------------
+
     st.session_state.messages.append(
         {
             "role": "user",
@@ -62,14 +98,19 @@ if user_message:
     with st.chat_message("user"):
         st.markdown(user_message)
 
-    # Send request to FastAPI
+    # -----------------------------------------------------
+    # SEND TO FASTAPI
+    # -----------------------------------------------------
+
     try:
 
         response = requests.post(
             API_URL,
             json={
                 "message": user_message,
-                "conversation_id": st.session_state.conversation_id,
+                "conversation_id": (
+                    st.session_state.conversation_id
+                ),
             },
             timeout=30,
         )
@@ -90,16 +131,32 @@ if user_message:
     except requests.exceptions.Timeout:
 
         assistant_message = (
-            "The request took too long. Please try again."
+            "The request took too long. "
+            "Please try again."
         )
 
-    except requests.exceptions.RequestException:
+    except requests.exceptions.HTTPError as error:
 
         assistant_message = (
-            "Something went wrong while contacting the receptionist."
+            f"The server returned an error: {error}"
         )
 
-    # Show assistant response
+    except (KeyError, ValueError):
+
+        assistant_message = (
+            "The server returned an unexpected response."
+        )
+
+    except requests.exceptions.RequestException as error:
+
+        assistant_message = (
+            f"Something went wrong: {error}"
+        )
+
+    # -----------------------------------------------------
+    # SHOW ASSISTANT RESPONSE
+    # -----------------------------------------------------
+
     st.session_state.messages.append(
         {
             "role": "assistant",
