@@ -1,7 +1,7 @@
-import json
 import re
 import time
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -44,7 +44,12 @@ app = FastAPI(
 initialize_database()
 
 BUSINESS_CONFIG = load_business_config()
-SYSTEM_PROMPT = build_system_prompt(BUSINESS_CONFIG)
+SYSTEM_PROMPT = build_system_prompt(
+    BUSINESS_CONFIG
+)
+
+# India timezone
+IST = ZoneInfo("Asia/Kolkata")
 
 
 # =========================================================
@@ -70,7 +75,7 @@ def default_state() -> dict:
         # Current action
         "action": None,
 
-        # Tracks whether date was already requested
+        # Date clarification
         "asked_for_date": False,
     }
 
@@ -81,7 +86,8 @@ def default_state() -> dict:
 
 def extract_date(message: str):
     """
-    Extract dates from common Indian and natural-language formats.
+    Extract dates from common Indian and natural-language
+    formats.
 
     Examples:
     - today
@@ -99,22 +105,35 @@ def extract_date(message: str):
     - Sep 5
     """
 
+    if not message:
+        return None
+
     message_lower = message.lower().strip()
-    today = datetime.now().date()
+
+    # Use India time, not the server's timezone.
+    today = datetime.now(IST).date()
 
     # -----------------------------------------------------
     # TODAY
     # -----------------------------------------------------
 
-    if re.search(r"\btoday\b", message_lower):
+    if re.search(
+        r"\btoday\b",
+        message_lower,
+    ):
         return today.isoformat()
 
     # -----------------------------------------------------
     # TOMORROW
     # -----------------------------------------------------
 
-    if re.search(r"\btomorrow\b", message_lower):
-        return (today + timedelta(days=1)).isoformat()
+    if re.search(
+        r"\btomorrow\b",
+        message_lower,
+    ):
+        return (
+            today + timedelta(days=1)
+        ).isoformat()
 
     # -----------------------------------------------------
     # YYYY-MM-DD
@@ -126,17 +145,30 @@ def extract_date(message: str):
     )
 
     if iso_match:
-        year, month, day = map(int, iso_match.groups())
+
+        year, month, day = map(
+            int,
+            iso_match.groups(),
+        )
 
         try:
-            return date(year, month, day).isoformat()
+
+            return date(
+                year,
+                month,
+                day,
+            ).isoformat()
+
         except ValueError:
+
             return None
 
     # -----------------------------------------------------
     # DD/MM/YYYY
     # DD-MM-YYYY
     # DD.MM.YYYY
+    #
+    # Indian convention
     # -----------------------------------------------------
 
     indian_match = re.search(
@@ -145,11 +177,22 @@ def extract_date(message: str):
     )
 
     if indian_match:
-        day, month, year = map(int, indian_match.groups())
+
+        day, month, year = map(
+            int,
+            indian_match.groups(),
+        )
 
         try:
-            return date(year, month, day).isoformat()
+
+            return date(
+                year,
+                month,
+                day,
+            ).isoformat()
+
         except ValueError:
+
             return None
 
     # -----------------------------------------------------
@@ -191,7 +234,9 @@ def extract_date(message: str):
         **short_months,
     }
 
-    month_pattern = "|".join(all_months.keys())
+    month_pattern = "|".join(
+        all_months.keys()
+    )
 
     # -----------------------------------------------------
     # DAY + MONTH + OPTIONAL YEAR
@@ -209,30 +254,61 @@ def extract_date(message: str):
     )
 
     if reverse_match:
-        day = int(reverse_match.group(1))
-        month_name = reverse_match.group(2)
-        month = all_months[month_name]
-        year_text = reverse_match.group(3)
+
+        day = int(
+            reverse_match.group(1)
+        )
+
+        month_name = (
+            reverse_match.group(2)
+        )
+
+        month = all_months[
+            month_name
+        ]
+
+        year_text = (
+            reverse_match.group(3)
+        )
 
         if year_text:
+
             year = int(year_text)
 
             try:
-                return date(year, month, day).isoformat()
+
+                return date(
+                    year,
+                    month,
+                    day,
+                ).isoformat()
+
             except ValueError:
+
                 return None
 
         year = today.year
 
         try:
-            candidate = date(year, month, day)
+
+            candidate = date(
+                year,
+                month,
+                day,
+            )
 
             if candidate < today:
-                candidate = date(year + 1, month, day)
+
+                candidate = date(
+                    year + 1,
+                    month,
+                    day,
+                )
 
             return candidate.isoformat()
 
         except ValueError:
+
             return None
 
     # -----------------------------------------------------
@@ -253,58 +329,110 @@ def extract_date(message: str):
     if not normal_match:
         return None
 
-    month_name = normal_match.group(1)
-    day = int(normal_match.group(2))
-    month = all_months[month_name]
-    year_text = normal_match.group(3)
+    month_name = (
+        normal_match.group(1)
+    )
+
+    day = int(
+        normal_match.group(2)
+    )
+
+    month = all_months[
+        month_name
+    ]
+
+    year_text = (
+        normal_match.group(3)
+    )
 
     if year_text:
+
         year = int(year_text)
 
         try:
-            return date(year, month, day).isoformat()
+
+            return date(
+                year,
+                month,
+                day,
+            ).isoformat()
+
         except ValueError:
+
             return None
 
     year = today.year
 
     try:
-        candidate = date(year, month, day)
+
+        candidate = date(
+            year,
+            month,
+            day,
+        )
 
         if candidate < today:
-            candidate = date(year + 1, month, day)
+
+            candidate = date(
+                year + 1,
+                month,
+                day,
+            )
 
         return candidate.isoformat()
 
     except ValueError:
+
         return None
 
 
 # =========================================================
-# CUSTOMER-FACING DATE FORMAT
+# CUSTOMER DATE FORMAT
 # =========================================================
 
-def format_date_for_customer(date_string: str) -> str:
+def format_date_for_customer(
+    date_string: str,
+) -> str:
+
     try:
+
         return datetime.strptime(
             date_string,
             "%Y-%m-%d",
-        ).strftime("%d/%m/%Y")
-    except (ValueError, TypeError):
+        ).strftime(
+            "%d/%m/%Y"
+        )
+
+    except (
+        ValueError,
+        TypeError,
+    ):
+
         return date_string
 
 
 # =========================================================
-# CUSTOMER-FACING TIME FORMAT
+# CUSTOMER TIME FORMAT
 # =========================================================
 
-def format_time_for_customer(time_string: str) -> str:
+def format_time_for_customer(
+    time_string: str,
+) -> str:
+
     try:
+
         return datetime.strptime(
             time_string,
             "%H:%M",
-        ).strftime("%I:%M %p").lstrip("0")
-    except (ValueError, TypeError):
+        ).strftime(
+            "%I:%M %p"
+        ).lstrip("0")
+
+    except (
+        ValueError,
+        TypeError,
+    ):
+
         return time_string
 
 
@@ -313,15 +441,9 @@ def format_time_for_customer(time_string: str) -> str:
 # =========================================================
 
 def extract_time(message: str):
-    """
-    Supports:
-    - 4 PM
-    - 4:00 PM
-    - 16:00
-    - 4 in the afternoon
-    - 9 in the morning
-    - 7 in the evening
-    """
+
+    if not message:
+        return None
 
     message_lower = message.lower().strip()
 
@@ -338,14 +460,27 @@ def extract_time(message: str):
     )
 
     if match_12:
-        hour = int(match_12.group(1))
-        minute = int(match_12.group(2) or "00")
+
+        hour = int(
+            match_12.group(1)
+        )
+
+        minute = int(
+            match_12.group(2) or "00"
+        )
+
         period = match_12.group(3)
 
-        if period == "pm" and hour != 12:
+        if (
+            period == "pm"
+            and hour != 12
+        ):
             hour += 12
 
-        if period == "am" and hour == 12:
+        if (
+            period == "am"
+            and hour == 12
+        ):
             hour = 0
 
         return f"{hour:02d}:{minute:02d}"
@@ -364,17 +499,36 @@ def extract_time(message: str):
     )
 
     if match_period:
-        hour = int(match_period.group(1))
-        minute = int(match_period.group(2) or "00")
+
+        hour = int(
+            match_period.group(1)
+        )
+
+        minute = int(
+            match_period.group(2) or "00"
+        )
+
         period = match_period.group(3)
 
-        if period in ("afternoon", "evening") and hour != 12:
+        if (
+            period in (
+                "afternoon",
+                "evening",
+            )
+            and hour != 12
+        ):
             hour += 12
 
-        if period == "morning" and hour == 12:
+        if (
+            period == "morning"
+            and hour == 12
+        ):
             hour = 0
 
-        if period == "night" and hour != 12:
+        if (
+            period == "night"
+            and hour != 12
+        ):
             hour += 12
 
         return f"{hour:02d}:{minute:02d}"
@@ -389,8 +543,14 @@ def extract_time(message: str):
     )
 
     if match_24:
-        hour = int(match_24.group(1))
-        minute = int(match_24.group(2))
+
+        hour = int(
+            match_24.group(1)
+        )
+
+        minute = int(
+            match_24.group(2)
+        )
 
         return f"{hour:02d}:{minute:02d}"
 
@@ -402,20 +562,9 @@ def extract_time(message: str):
 # =========================================================
 
 def extract_name(message: str):
-    """
-    Extract a name from normal user messages or Sarvam
-    natural-language summaries.
 
-    Examples:
-    - My name is Neil
-    - My name is Neil.
-    - I'm Neil
-    - I am Neil
-    - This is Neil
-    - Customer Neil wants an appointment.
-    - The customer Neil wants to book an appointment.
-    - Patient Neil needs an appointment.
-    """
+    if not message:
+        return None
 
     text = re.sub(
         r"\s+",
@@ -425,34 +574,53 @@ def extract_name(message: str):
 
     patterns = [
         # My name is Neil
-        r"\bmy name is\s+([A-Za-z][A-Za-z .'-]{0,49}?)(?=\s*(?:[,.;]|$|and\b|wants\b|is\b|has\b|needs\b))",
+        r"\bmy name is\s+"
+        r"([A-Za-z][A-Za-z .'-]{0,49}?)"
+        r"(?=\s*(?:[,.;]|$|and\b|wants\b|is\b|has\b|needs\b))",
 
         # Name is Neil
-        r"\bname is\s+([A-Za-z][A-Za-z .'-]{0,49}?)(?=\s*(?:[,.;]|$|and\b|wants\b|is\b|has\b|needs\b))",
+        r"\bname is\s+"
+        r"([A-Za-z][A-Za-z .'-]{0,49}?)"
+        r"(?=\s*(?:[,.;]|$|and\b|wants\b|is\b|has\b|needs\b))",
 
         # Customer's name is Neil
-        r"\bcustomer(?:'s)? name is\s+([A-Za-z][A-Za-z .'-]{0,49}?)(?=\s*(?:[,.;]|$|and\b|wants\b|is\b|has\b|needs\b))",
+        r"\bcustomer(?:'s)? name is\s+"
+        r"([A-Za-z][A-Za-z .'-]{0,49}?)"
+        r"(?=\s*(?:[,.;]|$|and\b|wants\b|is\b|has\b|needs\b))",
 
         # I'm Neil
-        r"\bI'm\s+([A-Za-z][A-Za-z .'-]{0,49}?)(?=\s*(?:[,.;]|$|and\b|wants\b|is\b|has\b|needs\b))",
+        r"\bI'm\s+"
+        r"([A-Za-z][A-Za-z .'-]{0,49}?)"
+        r"(?=\s*(?:[,.;]|$|and\b|wants\b|is\b|has\b|needs\b))",
 
         # I am Neil
-        r"\bI am\s+([A-Za-z][A-Za-z .'-]{0,49}?)(?=\s*(?:[,.;]|$|and\b|wants\b|is\b|has\b|needs\b))",
+        r"\bI am\s+"
+        r"([A-Za-z][A-Za-z .'-]{0,49}?)"
+        r"(?=\s*(?:[,.;]|$|and\b|wants\b|is\b|has\b|needs\b))",
 
         # This is Neil
-        r"\bthis is\s+([A-Za-z][A-Za-z .'-]{0,49}?)(?=\s*(?:[,.;]|$|and\b|wants\b|is\b|has\b|needs\b))",
+        r"\bthis is\s+"
+        r"([A-Za-z][A-Za-z .'-]{0,49}?)"
+        r"(?=\s*(?:[,.;]|$|and\b|wants\b|is\b|has\b|needs\b))",
 
         # Customer Neil wants...
-        r"\bcustomer\s+([A-Za-z][A-Za-z .'-]{0,49}?)(?=\s+(?:wants|is|has|needs|would|requested|is requesting)\b)",
+        r"\bcustomer\s+"
+        r"([A-Za-z][A-Za-z .'-]{0,49}?)"
+        r"(?=\s+(?:wants|is|has|needs|would|requested|is requesting)\b)",
 
         # Patient Neil wants...
-        r"\bpatient\s+([A-Za-z][A-Za-z .'-]{0,49}?)(?=\s+(?:wants|is|has|needs|would|requested|is requesting)\b)",
+        r"\bpatient\s+"
+        r"([A-Za-z][A-Za-z .'-]{0,49}?)"
+        r"(?=\s+(?:wants|is|has|needs|would|requested|is requesting)\b)",
 
         # Caller Neil wants...
-        r"\bcaller\s+([A-Za-z][A-Za-z .'-]{0,49}?)(?=\s+(?:wants|is|has|needs|would|requested|is requesting)\b)",
+        r"\bcaller\s+"
+        r"([A-Za-z][A-Za-z .'-]{0,49}?)"
+        r"(?=\s+(?:wants|is|has|needs|would|requested|is requesting)\b)",
     ]
 
     for pattern in patterns:
+
         match = re.search(
             pattern,
             text,
@@ -460,27 +628,37 @@ def extract_name(message: str):
         )
 
         if match:
-            name = match.group(1).strip()
-            name = name.rstrip(" .,!?")
+
+            name = (
+                match.group(1)
+                .strip()
+                .rstrip(" .,!?")
+            )
 
             if name:
                 return name
+
+    # If the entire value is simply a name,
+    # accept it.
+    if re.fullmatch(
+        r"[A-Za-z][A-Za-z .'-]{1,49}",
+        text,
+    ):
+
+        return text
 
     return None
 
 
 # =========================================================
-# INTENT DETECTION
+# INTENT DETECTION FOR WEB CHAT
 # =========================================================
 
 def detect_action(message: str):
 
     message_lower = message.lower()
 
-    # -----------------------------------------------------
-    # CANCELLATION
-    # -----------------------------------------------------
-
+    # Cancellation
     if any(
         keyword in message_lower
         for keyword in [
@@ -492,10 +670,7 @@ def detect_action(message: str):
     ):
         return "cancel"
 
-    # -----------------------------------------------------
-    # RESCHEDULING
-    # -----------------------------------------------------
-
+    # Rescheduling
     if any(
         keyword in message_lower
         for keyword in [
@@ -508,10 +683,7 @@ def detect_action(message: str):
     ):
         return "reschedule"
 
-    # -----------------------------------------------------
-    # BOOKING
-    # -----------------------------------------------------
-
+    # Booking
     if any(
         keyword in message_lower
         for keyword in [
@@ -531,9 +703,13 @@ def detect_action(message: str):
 # NEW BOOKING DETECTION
 # =========================================================
 
-def is_new_booking_request(message: str) -> bool:
+def is_new_booking_request(
+    message: str,
+) -> bool:
 
-    message_lower = message.lower().strip()
+    message_lower = (
+        message.lower().strip()
+    )
 
     booking_words = [
         "book",
@@ -543,8 +719,13 @@ def is_new_booking_request(message: str) -> bool:
         "appointment",
     ]
 
-    date_value = extract_date(message)
-    time_value = extract_time(message)
+    date_value = extract_date(
+        message
+    )
+
+    time_value = extract_time(
+        message
+    )
 
     contains_booking_word = any(
         word in message_lower
@@ -559,7 +740,7 @@ def is_new_booking_request(message: str) -> bool:
 
 
 # =========================================================
-# BOOKING HANDLER
+# BOOKING HANDLER FOR WEB CHAT
 # =========================================================
 
 def handle_booking(
@@ -567,57 +748,77 @@ def handle_booking(
     state: dict,
 ):
 
-    # =====================================================
+    # -----------------------------------------------------
     # DATE
-    # =====================================================
+    # -----------------------------------------------------
 
     if not state.get("date"):
 
-        extracted_date = extract_date(message)
+        extracted_date = extract_date(
+            message
+        )
 
         if extracted_date:
 
-            state["date"] = extracted_date
-            state["asked_for_date"] = False
+            state["date"] = (
+                extracted_date
+            )
+
+            state["asked_for_date"] = (
+                False
+            )
 
         else:
 
-            if is_new_booking_request(message):
+            if is_new_booking_request(
+                message
+            ):
 
-                state["asked_for_date"] = True
+                state[
+                    "asked_for_date"
+                ] = True
 
                 return (
                     "Sure. What date would "
                     "you like the appointment?"
                 )
 
-            if state.get("asked_for_date"):
+            if state.get(
+                "asked_for_date"
+            ):
 
                 return (
-                    "I couldn't quite understand "
-                    "that date. You can say "
-                    "something like 5 September, "
+                    "I couldn't quite "
+                    "understand that date. "
+                    "You can say something "
+                    "like 5 September, "
                     "05/09/2026, or tomorrow."
                 )
 
-            state["asked_for_date"] = True
+            state[
+                "asked_for_date"
+            ] = True
 
             return (
                 "Sure. What date would "
                 "you like the appointment?"
             )
 
-    # =====================================================
+    # -----------------------------------------------------
     # TIME
-    # =====================================================
+    # -----------------------------------------------------
 
     if not state.get("time"):
 
-        extracted_time = extract_time(message)
+        extracted_time = extract_time(
+            message
+        )
 
         if extracted_time:
 
-            state["time"] = extracted_time
+            state["time"] = (
+                extracted_time
+            )
 
         else:
 
@@ -626,51 +827,31 @@ def handle_booking(
                 "the appointment?"
             )
 
-    # =====================================================
+    # -----------------------------------------------------
     # NAME
-    # =====================================================
+    # -----------------------------------------------------
 
     if not state.get("name"):
 
-        # First try structured/natural-language name extraction.
-        extracted_name = extract_name(message)
+        extracted_name = extract_name(
+            message
+        )
 
         if extracted_name:
 
-            state["name"] = extracted_name
+            state["name"] = (
+                extracted_name
+            )
 
         else:
 
-            cleaned_message = message.strip()
-
-            extracted_time = extract_time(
-                cleaned_message
+            return (
+                "May I have your name?"
             )
 
-            extracted_date = extract_date(
-                cleaned_message
-            )
-
-            # If the message is simply a name such as "Neil",
-            # accept it.
-            if (
-                cleaned_message
-                and not extracted_time
-                and not extracted_date
-                and not is_new_booking_request(
-                    cleaned_message
-                )
-            ):
-
-                state["name"] = cleaned_message
-
-            else:
-
-                return "May I have your name?"
-
-    # =====================================================
-    # COMPLETE BOOKING
-    # =====================================================
+    # -----------------------------------------------------
+    # BOOK
+    # -----------------------------------------------------
 
     if (
         state.get("date")
@@ -683,17 +864,17 @@ def handle_booking(
             time=state["time"],
         )
 
-        customer_date = format_date_for_customer(
-            state["date"]
+        customer_date = (
+            format_date_for_customer(
+                state["date"]
+            )
         )
 
-        customer_time = format_time_for_customer(
-            state["time"]
+        customer_time = (
+            format_time_for_customer(
+                state["time"]
+            )
         )
-
-        # -------------------------------------------------
-        # SLOT ALREADY BOOKED
-        # -------------------------------------------------
 
         if availability == "BOOKED":
 
@@ -704,10 +885,6 @@ def handle_booking(
                 "choose another time."
             )
 
-        # -------------------------------------------------
-        # BOOK APPOINTMENT
-        # -------------------------------------------------
-
         result = book_appointment(
             date=state["date"],
             time=state["time"],
@@ -717,35 +894,36 @@ def handle_booking(
         if result == "BOOKED_SUCCESSFULLY":
 
             response = (
-                f"Your appointment is booked "
-                f"for {customer_date} at "
-                f"{customer_time}. "
+                f"Your appointment is "
+                f"booked for {customer_date} "
+                f"at {customer_time}. "
                 f"Name: {state['name']}."
             )
 
             state.clear()
-            state.update(default_state())
+            state.update(
+                default_state()
+            )
 
             return response
-
-        # -------------------------------------------------
-        # SLOT BOOKED BETWEEN CHECK AND INSERT
-        # -------------------------------------------------
 
         if result == "BOOKED":
 
             return (
                 f"Sorry, {customer_time} "
-                f"on {customer_date} was "
-                "just booked. Please choose "
-                "another time."
+                f"on {customer_date} "
+                "was just booked. Please "
+                "choose another time."
             )
 
-    return "Please provide the appointment details."
+    return (
+        "Please provide the appointment "
+        "details."
+    )
 
 
 # =========================================================
-# CANCELLATION HANDLER
+# CANCELLATION HANDLER FOR WEB CHAT
 # =========================================================
 
 def handle_cancellation(
@@ -753,86 +931,64 @@ def handle_cancellation(
     state: dict,
 ):
 
-    # =====================================================
-    # DATE
-    # =====================================================
-
     if not state.get("date"):
 
-        extracted_date = extract_date(message)
+        extracted_date = extract_date(
+            message
+        )
 
         if extracted_date:
 
-            state["date"] = extracted_date
+            state["date"] = (
+                extracted_date
+            )
 
         else:
 
             return (
-                "What date is the appointment "
-                "you would like to cancel?"
+                "What date is the "
+                "appointment you would "
+                "like to cancel?"
             )
-
-    # =====================================================
-    # TIME
-    # =====================================================
 
     if not state.get("time"):
 
-        extracted_time = extract_time(message)
+        extracted_time = extract_time(
+            message
+        )
 
         if extracted_time:
 
-            state["time"] = extracted_time
+            state["time"] = (
+                extracted_time
+            )
 
         else:
 
             return (
-                "What time is the appointment "
-                "you would like to cancel?"
+                "What time is the "
+                "appointment you would "
+                "like to cancel?"
             )
-
-    # =====================================================
-    # NAME
-    # =====================================================
 
     if not state.get("name"):
 
-        extracted_name = extract_name(message)
+        extracted_name = extract_name(
+            message
+        )
 
         if extracted_name:
 
-            state["name"] = extracted_name
+            state["name"] = (
+                extracted_name
+            )
 
         else:
 
-            cleaned_message = message.strip()
-
-            extracted_time = extract_time(
-                cleaned_message
+            return (
+                "May I have the name "
+                "on the appointment?"
             )
-
-            extracted_date = extract_date(
-                cleaned_message
-            )
-
-            if (
-                cleaned_message
-                and not extracted_time
-                and not extracted_date
-            ):
-
-                state["name"] = cleaned_message
-
-            else:
-
-                return (
-                    "May I have the name "
-                    "on the appointment?"
-                )
-
-    # =====================================================
-    # CANCEL
-    # =====================================================
 
     if (
         state.get("date")
@@ -846,12 +1002,16 @@ def handle_cancellation(
             name=state["name"],
         )
 
-        customer_date = format_date_for_customer(
-            state["date"]
+        customer_date = (
+            format_date_for_customer(
+                state["date"]
+            )
         )
 
-        customer_time = format_time_for_customer(
-            state["time"]
+        customer_time = (
+            format_time_for_customer(
+                state["time"]
+            )
         )
 
         if result == "CANCELLED":
@@ -864,7 +1024,9 @@ def handle_cancellation(
             )
 
             state.clear()
-            state.update(default_state())
+            state.update(
+                default_state()
+            )
 
             return response
 
@@ -876,11 +1038,14 @@ def handle_cancellation(
                 "those details."
             )
 
-    return "Please provide the appointment details."
+    return (
+        "Please provide the appointment "
+        "details."
+    )
 
 
 # =========================================================
-# RESCHEDULING HANDLER
+# RESCHEDULING HANDLER FOR WEB CHAT
 # =========================================================
 
 def handle_rescheduling(
@@ -888,56 +1053,36 @@ def handle_rescheduling(
     state: dict,
 ):
 
-    # =====================================================
-    # NAME
-    # =====================================================
-
     if not state.get("name"):
 
-        extracted_name = extract_name(message)
+        extracted_name = extract_name(
+            message
+        )
 
         if extracted_name:
 
-            state["name"] = extracted_name
+            state["name"] = (
+                extracted_name
+            )
 
         else:
 
-            cleaned_message = message.strip()
-
-            extracted_time = extract_time(
-                cleaned_message
+            return (
+                "May I have the name "
+                "on the appointment?"
             )
-
-            extracted_date = extract_date(
-                cleaned_message
-            )
-
-            if (
-                cleaned_message
-                and not extracted_time
-                and not extracted_date
-            ):
-
-                state["name"] = cleaned_message
-
-            else:
-
-                return (
-                    "May I have the name "
-                    "on the appointment?"
-                )
-
-    # =====================================================
-    # OLD DATE
-    # =====================================================
 
     if not state.get("old_date"):
 
-        extracted_date = extract_date(message)
+        extracted_date = extract_date(
+            message
+        )
 
         if extracted_date:
 
-            state["old_date"] = extracted_date
+            state["old_date"] = (
+                extracted_date
+            )
 
         else:
 
@@ -946,17 +1091,17 @@ def handle_rescheduling(
                 "of your appointment?"
             )
 
-    # =====================================================
-    # OLD TIME
-    # =====================================================
-
     if not state.get("old_time"):
 
-        extracted_time = extract_time(message)
+        extracted_time = extract_time(
+            message
+        )
 
         if extracted_time:
 
-            state["old_time"] = extracted_time
+            state["old_time"] = (
+                extracted_time
+            )
 
         else:
 
@@ -965,20 +1110,21 @@ def handle_rescheduling(
                 "of your appointment?"
             )
 
-    # =====================================================
-    # NEW DATE
-    # =====================================================
-
     if not state.get("new_date"):
 
-        extracted_date = extract_date(message)
+        extracted_date = extract_date(
+            message
+        )
 
         if (
             extracted_date
-            and extracted_date != state.get("old_date")
+            and extracted_date
+            != state.get("old_date")
         ):
 
-            state["new_date"] = extracted_date
+            state["new_date"] = (
+                extracted_date
+            )
 
         else:
 
@@ -987,20 +1133,21 @@ def handle_rescheduling(
                 "like for the appointment?"
             )
 
-    # =====================================================
-    # NEW TIME
-    # =====================================================
-
     if not state.get("new_time"):
 
-        extracted_time = extract_time(message)
+        extracted_time = extract_time(
+            message
+        )
 
         if (
             extracted_time
-            and extracted_time != state.get("old_time")
+            and extracted_time
+            != state.get("old_time")
         ):
 
-            state["new_time"] = extracted_time
+            state["new_time"] = (
+                extracted_time
+            )
 
         else:
 
@@ -1008,10 +1155,6 @@ def handle_rescheduling(
                 "What new time would you "
                 "like for the appointment?"
             )
-
-    # =====================================================
-    # RESCHEDULE
-    # =====================================================
 
     if (
         state.get("name")
@@ -1029,12 +1172,16 @@ def handle_rescheduling(
             new_time=state["new_time"],
         )
 
-        new_customer_date = format_date_for_customer(
-            state["new_date"]
+        new_customer_date = (
+            format_date_for_customer(
+                state["new_date"]
+            )
         )
 
-        new_customer_time = format_time_for_customer(
-            state["new_time"]
+        new_customer_time = (
+            format_time_for_customer(
+                state["new_time"]
+            )
         )
 
         if result == "RESCHEDULED":
@@ -1047,43 +1194,50 @@ def handle_rescheduling(
             )
 
             state.clear()
-            state.update(default_state())
+            state.update(
+                default_state()
+            )
 
             return response
 
-        if result == "OLD_APPOINTMENT_NOT_FOUND":
+        if (
+            result
+            == "OLD_APPOINTMENT_NOT_FOUND"
+        ):
 
             return (
-                "I couldn't find your existing "
-                "appointment with those details."
+                "I couldn't find your "
+                "existing appointment "
+                "with those details."
             )
 
         if result == "NEW_SLOT_BOOKED":
 
             return (
-                f"Sorry, {new_customer_time} "
-                f"on {new_customer_date} "
+                f"Sorry, "
+                f"{new_customer_time} on "
+                f"{new_customer_date} "
                 "is already booked. "
                 "Please choose another time."
             )
 
-    return "Please provide the appointment details."
-
-
-# =========================================================
-# ROOT ENDPOINT
-# =========================================================
-
-@app.get("/")
-def root():
-    return {
-        "message": "ReceptionAI API is running"
-    }
+    return (
+        "Please provide the appointment "
+        "details."
+    )
 
 
 # =========================================================
 # NORMAL CHAT ENDPOINT
 # =========================================================
+
+@app.get("/")
+def root():
+
+    return {
+        "message": "ReceptionAI API is running"
+    }
+
 
 @app.post(
     "/chat",
@@ -1091,11 +1245,9 @@ def root():
 )
 def chat(request: ChatRequest):
 
-    conversation_id = request.conversation_id
-
-    # -----------------------------------------------------
-    # LOAD OR CREATE CONVERSATION
-    # -----------------------------------------------------
+    conversation_id = (
+        request.conversation_id
+    )
 
     state = get_conversation_state(
         conversation_id
@@ -1110,17 +1262,9 @@ def chat(request: ChatRequest):
             state,
         )
 
-    # -----------------------------------------------------
-    # LOAD HISTORY
-    # -----------------------------------------------------
-
     history = get_messages(
         conversation_id
     )
-
-    # -----------------------------------------------------
-    # SAVE USER MESSAGE
-    # -----------------------------------------------------
 
     add_message(
         conversation_id,
@@ -1128,18 +1272,12 @@ def chat(request: ChatRequest):
         request.message,
     )
 
-    # -----------------------------------------------------
-    # DETECT INTENT
-    # -----------------------------------------------------
-
     detected_action = detect_action(
         request.message
     )
 
     if detected_action:
 
-        # Reset incomplete booking state when the user
-        # starts a fresh booking request.
         if (
             detected_action == "book"
             and is_new_booking_request(
@@ -1158,13 +1296,11 @@ def chat(request: ChatRequest):
             state["new_time"] = None
             state["asked_for_date"] = False
 
-        state["action"] = detected_action
+        state["action"] = (
+            detected_action
+        )
 
     action = state.get("action")
-
-    # -----------------------------------------------------
-    # BOOKING
-    # -----------------------------------------------------
 
     if action == "book":
 
@@ -1173,10 +1309,6 @@ def chat(request: ChatRequest):
             state,
         )
 
-    # -----------------------------------------------------
-    # CANCELLATION
-    # -----------------------------------------------------
-
     elif action == "cancel":
 
         response = handle_cancellation(
@@ -1184,20 +1316,12 @@ def chat(request: ChatRequest):
             state,
         )
 
-    # -----------------------------------------------------
-    # RESCHEDULING
-    # -----------------------------------------------------
-
     elif action == "reschedule":
 
         response = handle_rescheduling(
             request.message,
             state,
         )
-
-    # -----------------------------------------------------
-    # NORMAL LLM RESPONSE
-    # -----------------------------------------------------
 
     else:
 
@@ -1209,6 +1333,7 @@ def chat(request: ChatRequest):
         ]
 
         for message in history:
+
             llm_messages.append(message)
 
         llm_messages.append(
@@ -1223,10 +1348,6 @@ def chat(request: ChatRequest):
             state,
         )
 
-    # -----------------------------------------------------
-    # SAVE STATE + RESPONSE
-    # -----------------------------------------------------
-
     save_conversation_state(
         conversation_id,
         state,
@@ -1244,372 +1365,633 @@ def chat(request: ChatRequest):
 
 
 # =========================================================
-# VOICE CHAT REQUEST
+# VOICE ACTION REQUEST
 # =========================================================
 
-class VoiceChatRequest(BaseModel):
-    transcript: str
-    interaction_id: str
-
-
-# =========================================================
-# EXTRACT LATEST USER UTTERANCE
-# =========================================================
-
-def extract_latest_user_utterance(
-    transcript: str,
-):
+class VoiceActionRequest(BaseModel):
     """
-    Sarvam may send either:
-    1. A structured JSON transcript
-    2. Speaker-labelled text
-    3. A natural-language summary of the caller request
+    Structured arguments sent by the Sarvam voice agent.
 
-    This function extracts the most useful current user
-    request while remaining tolerant of the different formats.
+    action:
+        check_availability
+        book
+        cancel
+        reschedule
+
+    date/time:
+        Existing or requested appointment details.
+
+    new_date/new_time:
+        New appointment details for rescheduling.
     """
 
-    transcript = transcript.strip()
+    action: str
+    name: str | None = None
+    date: str | None = None
+    time: str | None = None
+    new_date: str | None = None
+    new_time: str | None = None
 
-    if not transcript:
+
+# =========================================================
+# NORMALIZE VOICE ACTION
+# =========================================================
+
+def normalize_voice_action(
+    action: str,
+) -> str | None:
+
+    if not action:
         return None
 
-    # -----------------------------------------------------
-    # JSON transcript
-    # -----------------------------------------------------
-
-    try:
-
-        parsed = json.loads(transcript)
-
-        if isinstance(parsed, list):
-
-            user_messages = []
-
-            for turn in parsed:
-
-                if not isinstance(turn, dict):
-                    continue
-
-                role = str(
-                    turn.get("role", "")
-                ).lower()
-
-                if role == "user":
-
-                    text = (
-                        turn.get("en_text")
-                        or turn.get("text")
-                        or turn.get("content")
-                    )
-
-                    if text:
-                        user_messages.append(
-                            str(text).strip()
-                        )
-
-            if user_messages:
-                return user_messages[-1]
-
-    except (
-        json.JSONDecodeError,
-        TypeError,
-        ValueError,
-    ):
-        pass
-
-    # -----------------------------------------------------
-    # Speaker-labelled transcript
-    # -----------------------------------------------------
-
-    pattern = re.compile(
-        r"(?:^|\n)\s*"
-        r"(user|caller|customer)"
-        r"\s*[:\-]\s*"
-        r"(.+?)(?=\n\s*"
-        r"(?:user|caller|customer|agent|assistant|receptionai)"
-        r"\s*[:\-]|\Z)",
-        re.IGNORECASE | re.DOTALL,
+    cleaned = re.sub(
+        r"[\s-]+",
+        "_",
+        action.strip().lower(),
     )
 
-    matches = pattern.findall(transcript)
+    aliases = {
+        "availability": "check_availability",
+        "check_availability": "check_availability",
+        "checkavailability": "check_availability",
+        "book": "book",
+        "booking": "book",
+        "schedule": "book",
+        "reserve": "book",
+        "cancel": "cancel",
+        "cancellation": "cancel",
+        "canceled": "cancel",
+        "cancelled": "cancel",
+        "reschedule": "reschedule",
+        "rescheduling": "reschedule",
+    }
 
-    if matches:
-        return matches[-1][1].strip()
+    return aliases.get(cleaned)
 
-    # -----------------------------------------------------
-    # Single unlabeled line
-    # -----------------------------------------------------
 
-    lines = [
-        line.strip()
-        for line in transcript.splitlines()
-        if line.strip()
-    ]
+# =========================================================
+# PARSE STRUCTURED VOICE DATE
+# =========================================================
 
-    if len(lines) == 1:
-        return lines[0]
+def parse_voice_date(
+    value: str | None,
+) -> str | None:
 
-    # -----------------------------------------------------
-    # If Sarvam sent a summary as multiple lines, use the
-    # complete text as the current request.
-    # Our date/time/name extraction functions are designed
-    # to handle this natural-language summary.
-    # -----------------------------------------------------
+    if not value:
+        return None
 
-    if lines:
-        return " ".join(lines)
+    return extract_date(
+        value
+    )
+
+
+# =========================================================
+# PARSE STRUCTURED VOICE TIME
+# =========================================================
+
+def parse_voice_time(
+    value: str | None,
+) -> str | None:
+
+    if not value:
+        return None
+
+    return extract_time(
+        value
+    )
+
+
+# =========================================================
+# PARSE STRUCTURED VOICE NAME
+# =========================================================
+
+def parse_voice_name(
+    value: str | None,
+) -> str | None:
+
+    if not value:
+        return None
+
+    extracted = extract_name(
+        value
+    )
+
+    if extracted:
+        return extracted
+
+    cleaned = value.strip()
+
+    if cleaned:
+        return cleaned
 
     return None
 
 
 # =========================================================
-# VOICE CHAT ENDPOINT
+# VOICE ACTION ENDPOINT
 # =========================================================
 
 @app.post(
-    "/voice-chat",
+    "/voice-action",
     response_model=ChatResponse,
 )
-def voice_chat(request: VoiceChatRequest):
+def voice_action(
+    request: VoiceActionRequest,
+):
 
     total_start = time.perf_counter()
 
-    # -----------------------------------------------------
-    # EXTRACT CURRENT USER REQUEST
-    # -----------------------------------------------------
-
-    latest_user_message = (
-        extract_latest_user_utterance(
-            request.transcript
-        )
+    action = normalize_voice_action(
+        request.action
     )
+
+    name = parse_voice_name(
+        request.name
+    )
+
+    appointment_date = parse_voice_date(
+        request.date
+    )
+
+    appointment_time = parse_voice_time(
+        request.time
+    )
+
+    new_date = parse_voice_date(
+        request.new_date
+    )
+
+    new_time = parse_voice_time(
+        request.new_time
+    )
+
+    # -----------------------------------------------------
+    # DEBUG LOGGING
+    # -----------------------------------------------------
 
     print(
-        f"[PERF] extract_latest_user_utterance: "
-        f"{time.perf_counter() - total_start:.3f}s"
+        f"[VOICE] action={action}"
+        f" name={name}"
+        f" date={appointment_date}"
+        f" time={appointment_time}"
+        f" new_date={new_date}"
+        f" new_time={new_time}"
     )
 
-    if not latest_user_message:
+    # -----------------------------------------------------
+    # INVALID ACTION
+    # -----------------------------------------------------
+
+    if not action:
+
+        response = (
+            "I can help with checking "
+            "appointment availability, "
+            "booking, cancellation, or "
+            "rescheduling. Which would "
+            "you like?"
+        )
 
         print(
-            f"[PERF] TOTAL voice_chat: "
+            f"[PERF] TOTAL voice_action: "
             f"{time.perf_counter() - total_start:.3f}s"
         )
 
         return ChatResponse(
-            response=(
-                "I didn't catch that. "
-                "Could you please repeat?"
+            response=response
+        )
+
+    # =====================================================
+    # CHECK AVAILABILITY
+    # =====================================================
+
+    if action == "check_availability":
+
+        if not appointment_date:
+
+            return ChatResponse(
+                response=(
+                    "What date would you "
+                    "like me to check?"
+                )
+            )
+
+        if not appointment_time:
+
+            return ChatResponse(
+                response=(
+                    "What time would you "
+                    "like me to check?"
+                )
+            )
+
+        checkpoint = time.perf_counter()
+
+        availability = check_availability(
+            date=appointment_date,
+            time=appointment_time,
+        )
+
+        print(
+            f"[PERF] voice check_availability: "
+            f"{time.perf_counter() - checkpoint:.3f}s"
+        )
+
+        customer_date = (
+            format_date_for_customer(
+                appointment_date
             )
         )
 
-    conversation_id = request.interaction_id
-
-    # -----------------------------------------------------
-    # GET CONVERSATION STATE
-    # -----------------------------------------------------
-
-    checkpoint = time.perf_counter()
-
-    state = get_conversation_state(
-        conversation_id
-    )
-
-    print(
-        f"[PERF] get_conversation_state: "
-        f"{time.perf_counter() - checkpoint:.3f}s"
-    )
-
-    # -----------------------------------------------------
-    # CREATE CONVERSATION IF NEEDED
-    # -----------------------------------------------------
-
-    checkpoint = time.perf_counter()
-
-    if state is None:
-
-        state = default_state()
-
-        create_conversation(
-            conversation_id,
-            state,
+        customer_time = (
+            format_time_for_customer(
+                appointment_time
+            )
         )
 
-    print(
-        f"[PERF] create/load conversation: "
-        f"{time.perf_counter() - checkpoint:.3f}s"
-    )
+        if availability == "BOOKED":
 
-    # -----------------------------------------------------
-    # LOAD HISTORY
-    # -----------------------------------------------------
-
-    checkpoint = time.perf_counter()
-
-    history = get_messages(
-        conversation_id
-    )
-
-    print(
-        f"[PERF] get_messages: "
-        f"{time.perf_counter() - checkpoint:.3f}s"
-    )
-
-    # -----------------------------------------------------
-    # SAVE USER MESSAGE
-    # -----------------------------------------------------
-
-    checkpoint = time.perf_counter()
-
-    add_message(
-        conversation_id,
-        "user",
-        latest_user_message,
-    )
-
-    print(
-        f"[PERF] add_user_message: "
-        f"{time.perf_counter() - checkpoint:.3f}s"
-    )
-
-    # -----------------------------------------------------
-    # DETECT INTENT
-    # -----------------------------------------------------
-
-    checkpoint = time.perf_counter()
-
-    detected_action = detect_action(
-        latest_user_message
-    )
-
-    print(
-        f"[PERF] detect_action: "
-        f"{time.perf_counter() - checkpoint:.3f}s"
-    )
-
-    if detected_action:
-
-        if (
-            detected_action == "book"
-            and is_new_booking_request(
-                latest_user_message
+            response = (
+                f"Sorry, {customer_time} "
+                f"on {customer_date} "
+                "is already booked."
             )
-            and not state.get("date")
-            and not state.get("time")
-        ):
 
-            state["name"] = None
-            state["date"] = None
-            state["time"] = None
-            state["old_date"] = None
-            state["old_time"] = None
-            state["new_date"] = None
-            state["new_time"] = None
-            state["asked_for_date"] = False
+        else:
 
-        state["action"] = detected_action
+            response = (
+                f"Yes, {customer_time} "
+                f"on {customer_date} "
+                "is available."
+            )
 
-    action = state.get("action")
+        print(
+            f"[PERF] TOTAL voice_action: "
+            f"{time.perf_counter() - total_start:.3f}s"
+        )
 
-    # -----------------------------------------------------
-    # BUSINESS / LLM PROCESSING
-    # -----------------------------------------------------
+        return ChatResponse(
+            response=response
+        )
 
-    checkpoint = time.perf_counter()
+    # =====================================================
+    # BOOK
+    # =====================================================
 
     if action == "book":
 
-        response = handle_booking(
-            latest_user_message,
-            state,
+        if not appointment_date:
+
+            return ChatResponse(
+                response=(
+                    "What date would "
+                    "you like the appointment?"
+                )
+            )
+
+        if not appointment_time:
+
+            return ChatResponse(
+                response=(
+                    "What time would "
+                    "you like the appointment?"
+                )
+            )
+
+        if not name:
+
+            return ChatResponse(
+                response=(
+                    "May I have your name?"
+                )
+            )
+
+        # -------------------------------------------------
+        # CHECK AVAILABILITY
+        # -------------------------------------------------
+
+        checkpoint = time.perf_counter()
+
+        availability = check_availability(
+            date=appointment_date,
+            time=appointment_time,
         )
 
-    elif action == "cancel":
-
-        response = handle_cancellation(
-            latest_user_message,
-            state,
+        print(
+            f"[PERF] voice availability check: "
+            f"{time.perf_counter() - checkpoint:.3f}s"
         )
 
-    elif action == "reschedule":
-
-        response = handle_rescheduling(
-            latest_user_message,
-            state,
+        customer_date = (
+            format_date_for_customer(
+                appointment_date
+            )
         )
 
-    else:
-
-        llm_messages = [
-            {
-                "role": "system",
-                "content": SYSTEM_PROMPT,
-            }
-        ]
-
-        for message in history:
-            llm_messages.append(message)
-
-        llm_messages.append(
-            {
-                "role": "user",
-                "content": latest_user_message,
-            }
+        customer_time = (
+            format_time_for_customer(
+                appointment_time
+            )
         )
 
-        response = get_llm_response(
-            llm_messages,
-            state,
+        if availability == "BOOKED":
+
+            response = (
+                f"Sorry, {customer_time} "
+                f"on {customer_date} "
+                "is already booked. "
+                "Please choose another time."
+            )
+
+            print(
+                f"[PERF] TOTAL voice_action: "
+                f"{time.perf_counter() - total_start:.3f}s"
+            )
+
+            return ChatResponse(
+                response=response
+            )
+
+        # -------------------------------------------------
+        # BOOK
+        # -------------------------------------------------
+
+        checkpoint = time.perf_counter()
+
+        result = book_appointment(
+            date=appointment_date,
+            time=appointment_time,
+            name=name,
         )
+
+        print(
+            f"[PERF] voice book_appointment: "
+            f"{time.perf_counter() - checkpoint:.3f}s"
+        )
+
+        if result == "BOOKED_SUCCESSFULLY":
+
+            response = (
+                f"Your appointment is "
+                f"booked for {customer_date} "
+                f"at {customer_time}. "
+                f"Name: {name}."
+            )
+
+        elif result == "BOOKED":
+
+            response = (
+                f"Sorry, {customer_time} "
+                f"on {customer_date} "
+                "was just booked. "
+                "Please choose another time."
+            )
+
+        else:
+
+            response = (
+                "I wasn't able to complete "
+                "the booking right now. "
+                "Please try again."
+            )
+
+        print(
+            f"[PERF] TOTAL voice_action: "
+            f"{time.perf_counter() - total_start:.3f}s"
+        )
+
+        return ChatResponse(
+            response=response
+        )
+
+    # =====================================================
+    # CANCEL
+    # =====================================================
+
+    if action == "cancel":
+
+        if not appointment_date:
+
+            return ChatResponse(
+                response=(
+                    "What date is the "
+                    "appointment you want "
+                    "to cancel?"
+                )
+            )
+
+        if not appointment_time:
+
+            return ChatResponse(
+                response=(
+                    "What time is the "
+                    "appointment you want "
+                    "to cancel?"
+                )
+            )
+
+        if not name:
+
+            return ChatResponse(
+                response=(
+                    "May I have the name "
+                    "on the appointment?"
+                )
+            )
+
+        checkpoint = time.perf_counter()
+
+        result = cancel_appointment(
+            date=appointment_date,
+            time=appointment_time,
+            name=name,
+        )
+
+        print(
+            f"[PERF] voice cancel_appointment: "
+            f"{time.perf_counter() - checkpoint:.3f}s"
+        )
+
+        customer_date = (
+            format_date_for_customer(
+                appointment_date
+            )
+        )
+
+        customer_time = (
+            format_time_for_customer(
+                appointment_time
+            )
+        )
+
+        if result == "CANCELLED":
+
+            response = (
+                f"Your appointment on "
+                f"{customer_date} at "
+                f"{customer_time} has "
+                "been cancelled."
+            )
+
+        elif result == "NOT_FOUND":
+
+            response = (
+                "I couldn't find a booked "
+                "appointment matching "
+                "those details."
+            )
+
+        else:
+
+            response = (
+                "I wasn't able to complete "
+                "the cancellation right now."
+            )
+
+        print(
+            f"[PERF] TOTAL voice_action: "
+            f"{time.perf_counter() - total_start:.3f}s"
+        )
+
+        return ChatResponse(
+            response=response
+        )
+
+    # =====================================================
+    # RESCHEDULE
+    # =====================================================
+
+    if action == "reschedule":
+
+        if not name:
+
+            return ChatResponse(
+                response=(
+                    "May I have the name "
+                    "on the appointment?"
+                )
+            )
+
+        if not appointment_date:
+
+            return ChatResponse(
+                response=(
+                    "What is the current "
+                    "date of your appointment?"
+                )
+            )
+
+        if not appointment_time:
+
+            return ChatResponse(
+                response=(
+                    "What is the current "
+                    "time of your appointment?"
+                )
+            )
+
+        if not new_date:
+
+            return ChatResponse(
+                response=(
+                    "What new date would "
+                    "you like?"
+                )
+            )
+
+        if not new_time:
+
+            return ChatResponse(
+                response=(
+                    "What new time would "
+                    "you like?"
+                )
+            )
+
+        checkpoint = time.perf_counter()
+
+        result = reschedule_appointment(
+            name=name,
+            old_date=appointment_date,
+            old_time=appointment_time,
+            new_date=new_date,
+            new_time=new_time,
+        )
+
+        print(
+            f"[PERF] voice reschedule_appointment: "
+            f"{time.perf_counter() - checkpoint:.3f}s"
+        )
+
+        new_customer_date = (
+            format_date_for_customer(
+                new_date
+            )
+        )
+
+        new_customer_time = (
+            format_time_for_customer(
+                new_time
+            )
+        )
+
+        if result == "RESCHEDULED":
+
+            response = (
+                f"Your appointment has "
+                f"been rescheduled to "
+                f"{new_customer_date} "
+                f"at {new_customer_time}."
+            )
+
+        elif (
+            result
+            == "OLD_APPOINTMENT_NOT_FOUND"
+        ):
+
+            response = (
+                "I couldn't find your "
+                "existing appointment "
+                "with those details."
+            )
+
+        elif result == "NEW_SLOT_BOOKED":
+
+            response = (
+                f"Sorry, {new_customer_time} "
+                f"on {new_customer_date} "
+                "is already booked. "
+                "Please choose another time."
+            )
+
+        else:
+
+            response = (
+                "I wasn't able to complete "
+                "the rescheduling right now."
+            )
+
+        print(
+            f"[PERF] TOTAL voice_action: "
+            f"{time.perf_counter() - total_start:.3f}s"
+        )
+
+        return ChatResponse(
+            response=response
+        )
+
+    # -----------------------------------------------------
+    # FALLBACK
+    # -----------------------------------------------------
 
     print(
-        f"[PERF] business/LLM processing: "
-        f"{time.perf_counter() - checkpoint:.3f}s"
-    )
-
-    # -----------------------------------------------------
-    # SAVE STATE
-    # -----------------------------------------------------
-
-    checkpoint = time.perf_counter()
-
-    save_conversation_state(
-        conversation_id,
-        state,
-    )
-
-    print(
-        f"[PERF] save_conversation_state: "
-        f"{time.perf_counter() - checkpoint:.3f}s"
-    )
-
-    # -----------------------------------------------------
-    # SAVE ASSISTANT MESSAGE
-    # -----------------------------------------------------
-
-    checkpoint = time.perf_counter()
-
-    add_message(
-        conversation_id,
-        "assistant",
-        response,
-    )
-
-    print(
-        f"[PERF] add_assistant_message: "
-        f"{time.perf_counter() - checkpoint:.3f}s"
-    )
-
-    # -----------------------------------------------------
-    # TOTAL REQUEST TIME
-    # -----------------------------------------------------
-
-    print(
-        f"[PERF] TOTAL voice_chat: "
+        f"[PERF] TOTAL voice_action: "
         f"{time.perf_counter() - total_start:.3f}s"
     )
 
     return ChatResponse(
-        response=response
+        response=(
+            "I wasn't able to process "
+            "that appointment request."
+        )
     )
