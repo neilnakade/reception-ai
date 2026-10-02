@@ -5,3 +5,4 @@ credentials.json
 token.json
 reception.db
 *.pyc
+reception.db
